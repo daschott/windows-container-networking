@@ -5,11 +5,12 @@ package network
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/Microsoft/hcsshim/hcn"
 	"github.com/Microsoft/windows-container-networking/common"
 	"github.com/sirupsen/logrus"
-	"sync"
-	"time"
 )
 
 // NetworkManager manages the set of container networking resources.
@@ -123,6 +124,7 @@ func (nm *networkManager) CreateEndpoint(networkID string, epInfo *EndpointInfo,
 	defer nm.Unlock()
 
 	epInfo.NetworkID = networkID
+
 	hcnEndpointConfig := epInfo.GetHostComputeEndpoint()
 	hcnEndpoint, err := hcnEndpointConfig.Create()
 	if err != nil {
@@ -134,6 +136,19 @@ func (nm *networkManager) CreateEndpoint(networkID string, epInfo *EndpointInfo,
 	if err != nil {
 		return nil, fmt.Errorf("error adding endpoint to namespace %v : endpoint %v", err, hcnEndpoint)
 	}
+	// ENDPOINT 2 START
+	delegatedEndpointConfig := epInfo.testAccelNetEndpoint()
+	hcnEndpointAccelNet, err := delegatedEndpointConfig.Create()
+	if err != nil {
+		return nil, fmt.Errorf("error creating endpoint %v : endpoint config %v", err, delegatedEndpointConfig)
+	}
+
+	// Add this endpoint to Namespace
+	err = hcn.AddNamespaceEndpoint(namespaceID, hcnEndpointAccelNet.Id)
+	if err != nil {
+		return nil, fmt.Errorf("error adding endpoint to namespace %v : endpoint %v", err, hcnEndpointAccelNet)
+	}
+	// ENDPOINT 2 END
 
 	return GetEndpointInfoFromHostComputeEndpoint(hcnEndpoint, epInfo.DualStack), err
 }

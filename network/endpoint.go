@@ -5,8 +5,9 @@ package network
 
 import (
 	"encoding/json"
-	"github.com/Microsoft/windows-container-networking/common"
 	"net"
+
+	"github.com/Microsoft/windows-container-networking/common"
 
 	"github.com/Microsoft/hcsshim/hcn"
 )
@@ -36,6 +37,43 @@ type EndpointInfo struct {
 type RouteInfo struct {
 	Destination net.IPNet
 	Gateway     net.IP
+}
+
+func (endpoint *EndpointInfo) testAccelNetEndpoint() *hcn.HostComputeEndpoint {
+	net2, _ := hcn.GetNetworkByName("delegatednw")
+	ipConfig := []hcn.IpConfig{}
+	routes := []hcn.Route{}
+
+	ipConfig = append(ipConfig, hcn.IpConfig{
+		IpAddress: "192.168.1.5",
+	})
+	nextHop := "192.168.1.100" //endpoint.Gateway.String()
+	routes = append(routes, hcn.Route{
+		NextHop:           nextHop,
+		DestinationPrefix: "0.0.0.0/0",
+	})
+
+	macAddr := "60-45-BD-D1-9F-D3"
+	testName := endpoint.Name[:64] + "_delegatednw" //+ "_eth0"
+
+	return &hcn.HostComputeEndpoint{
+		Name:                 testName,
+		HostComputeNetwork:   net2.Id,
+		HostComputeNamespace: endpoint.NamespaceID,
+		Dns: hcn.Dns{
+			Domain:     endpoint.DNS.Domain,
+			Search:     endpoint.DNS.Search,
+			ServerList: endpoint.DNS.Nameservers,
+			Options:    endpoint.DNS.Options,
+		},
+		MacAddress:       macAddr,
+		Routes:           routes,
+		IpConfigurations: ipConfig,
+		SchemaVersion: hcn.SchemaVersion{
+			Major: 2,
+			Minor: 0,
+		},
+	}
 }
 
 // GetHostComputeEndpoint converts EndpointInfo to HostComputeEndpoint format.
@@ -69,9 +107,22 @@ func (endpoint *EndpointInfo) GetHostComputeEndpoint() *hcn.HostComputeEndpoint 
 		gwAddr = endpoint.Gateway.String()
 	}
 
+	gwAddr = "0.0.0.0"
 	routes = append(routes, hcn.Route{
 		NextHop:           gwAddr,
 		DestinationPrefix: "0.0.0.0/0",
+	})
+
+	routes = append(routes, hcn.Route{
+		DestinationPrefix: "10.0.0.0/16",
+	})
+	routes = append(routes, hcn.Route{
+		NextHop:           "196.168.0.1",
+		DestinationPrefix: "192.168.10.0/24",
+	})
+
+	routes = append(routes, hcn.Route{
+		DestinationPrefix: "::/0",
 	})
 
 	if endpoint.Gateway6 != nil {
@@ -83,7 +134,7 @@ func (endpoint *EndpointInfo) GetHostComputeEndpoint() *hcn.HostComputeEndpoint 
 	}
 
 	return &hcn.HostComputeEndpoint{
-		Name:                 endpoint.Name,
+		Name:                 endpoint.Name, //+ "_eth0",
 		Id:                   endpoint.ID,
 		HostComputeNetwork:   endpoint.NetworkID,
 		HostComputeNamespace: endpoint.NamespaceID,
